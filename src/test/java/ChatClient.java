@@ -1,8 +1,8 @@
-import dev.mccue.multiplayer.AbstractClient;
+import dev.mccue.multiplayer.Client;
 
 import java.util.function.Consumer;
 
-public class ChatClient extends AbstractClient<ToServerChat, ToClientChat> {
+public class ChatClient extends Client<ToServerChat, ToClientChat> {
     public ChatClient(String host, int port) {
         super(host, port);
     }

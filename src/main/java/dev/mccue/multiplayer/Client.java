@@ -8,12 +8,12 @@ import java.net.Socket;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
-public abstract class AbstractClient<
+public abstract class Client<
         ToServer extends ToServerMessage,
         ToClient extends ToClientMessage
         > {
 
-    private static final Logger LOG = LoggerFactory.getLogger(AbstractClient.class);
+    private static final Logger LOG = LoggerFactory.getLogger(Client.class);
 
     private final Runnable start;
     private final Runnable stop;
@@ -22,7 +22,7 @@ public abstract class AbstractClient<
     private ObjectInputStream in;
     private Thread backgroundThread;
 
-    public AbstractClient(String host, int port) {
+    public Client(String host, int port) {
         var latch = new CountDownLatch(1);
         this.stop = latch::countDown;
         Thread.startVirtualThread(() -> {
@@ -75,9 +75,9 @@ public abstract class AbstractClient<
         return new RunningClient<>(this.stop, this::sendToServer);
     }
 
-    public abstract void onMessage(ToClient message, Consumer<ToServer> sendToServer);
+    protected abstract void onMessage(ToClient message, Consumer<ToServer> sendToServer);
 
-    public abstract void onDisconnect();
+    protected abstract void onDisconnect();
 
     private void sendToServer(ToServer toServer) {
         if (out == null) {

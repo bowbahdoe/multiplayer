@@ -9,17 +9,21 @@ import java.io.ObjectOutputStream;
 import java.io.UncheckedIOException;
 import java.net.ServerSocket;
 import java.nio.channels.ClosedByInterruptException;
+import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
-public abstract class AbstractServer<
+public abstract class Server<
         ToServer extends ToServerMessage,
         ToClient extends ToClientMessage,
         ClientState
         > {
 
-    private static final Logger LOG = LoggerFactory.getLogger(AbstractServer.class);
+    private static final Logger LOG = LoggerFactory.getLogger(Server.class);
 
     private final int port;
     private int clientId = 0;
@@ -35,14 +39,14 @@ public abstract class AbstractServer<
     ) {
     }
 
-    public AbstractServer(int port) {
+    public Server(int port) {
         this.port = port;
         this.clients = new ConcurrentHashMap<>();
     }
 
     private record Msg<ToServer>(ClientId id, ToServer message){}
 
-    public RunningServer start() {
+    public RunningServer<ToClient, ClientState> start() {
         var serverMessageQueue = new LinkedBlockingDeque<Msg<ToServer>>();
         var serverMessageThread = Thread.startVirtualThread(() -> {
             while (true) {
@@ -100,6 +104,7 @@ public abstract class AbstractServer<
                                 LOG.error("Error receiving message from client", e);
                                 outgoingThread.interrupt();
                                 synchronized (lock) {
+                                    clients.remove(id);
                                     onDisconnect(id);
                                 }
                                 break;
@@ -124,6 +129,7 @@ public abstract class AbstractServer<
                     connected.outgoingThread.interrupt();
                     connected.incomingThread.interrupt();
                     synchronized (lock) {
+                        clients.remove(id);
                         onDisconnect(id);
                     }
                 });
@@ -133,13 +139,13 @@ public abstract class AbstractServer<
                 throw new UncheckedIOException(e);
             }
         });
-        return new RunningServer(() -> {
+        return new RunningServer<>(this, () -> {
             serverMessageThread.interrupt();
             serverThread.interrupt();
         }, serverThread);
     }
 
-    public final ClientState getState(ClientId id) {
+    protected final ClientState getState(ClientId id) {
         var client = clients.get(id);
         if (client == null) {
             return null;
@@ -148,7 +154,7 @@ public abstract class AbstractServer<
         return client.state.get();
     }
 
-    public final void setState(ClientId id, ClientState state) {
+    protected final void setState(ClientId id, ClientState state) {
         var client = clients.get(id);
         if (client == null) {
             return;
@@ -158,14 +164,14 @@ public abstract class AbstractServer<
     }
 
     /// Sends a message to all connected clients.
-    public final void broadcast(ToClient message) {
+    protected final void broadcast(ToClient message) {
         clients.forEach((_, connected) -> {
             connected.outgoing.add(message);
         });
     }
 
     /// Sends a message to a specific connected client
-    public final boolean send(ClientId id, ToClient message) {
+    protected final boolean send(ClientId id, ToClient message) {
         var client = clients.get(id);
         if (client == null) {
             LOG.warn("No connected client with id: {}", id);
@@ -176,6 +182,10 @@ public abstract class AbstractServer<
         return true;
     }
 
+    protected final List<ClientId> connected() {
+        return List.copyOf(clients.keySet());
+    }
+
     protected abstract void onDisconnect(ClientId clientId);
 
 
@@ -183,4 +193,116 @@ public abstract class AbstractServer<
 
 
     protected abstract void onMessage(ClientId clientId, ToServer message);
+
+    private static final class BuiltServer<
+            ToServer extends ToServerMessage,
+            ToClient extends ToClientMessage,
+            ClientState
+            > extends Server<ToServer, ToClient, ClientState> {
+        private final DisconnectHandler<ToClient, ClientState> onDisconnect;
+        private final ConnectHandler<ToClient, ClientState> onConnect;
+        private final MessageHandler<ToClient, ToServer, ClientState> onMessage;
+        private final ServerContext<ToClient, ClientState> ctx;
+
+        public BuiltServer(Builder<ToServer, ToClient, ClientState> builder) {
+            super(builder.port);
+            this.onDisconnect = builder.onDisconnect;
+            this.onConnect = builder.onConnect;
+            this.onMessage = builder.onMessage;
+            this.ctx = new ServerContext<>(this);
+        }
+
+        @Override
+        protected void onDisconnect(ClientId clientId) {
+            onDisconnect.onDisconnect(ctx, clientId);
+        }
+
+        @Override
+        protected void onConnect(ClientId clientId) {
+            onConnect.onConnect(ctx, clientId);
+        }
+
+        @Override
+        protected void onMessage(ClientId clientId, ToServer message) {
+            onMessage.onMessage(ctx, clientId, message);
+        }
+    }
+
+    public static <
+            ToServer extends ToServerMessage,
+            ToClient extends ToClientMessage,
+            ClientState
+            > Builder<ToServer, ToClient, ClientState> builder(int port) {
+        return new Builder<>(port);
+    }
+
+    public static final class Builder<
+            ToServer extends ToServerMessage,
+            ToClient extends ToClientMessage,
+            ClientState
+            > {
+        private String host;
+        private int port;
+        private DisconnectHandler<ToClient, ClientState> onDisconnect;
+        private ConnectHandler<ToClient, ClientState> onConnect;
+        private MessageHandler<ToClient, ToServer, ClientState> onMessage;
+
+        private Builder(int port) {
+            this.port = port;
+            this.onDisconnect = (_, _) -> {};
+            this.onConnect = (_, _) -> {};
+            this.onMessage = (_, _, _) -> {};
+        }
+
+        public Builder<ToServer, ToClient, ClientState> onDisconnect(
+                DisconnectHandler<ToClient, ClientState> onDisconnect
+        ) {
+            this.onDisconnect = Objects.requireNonNull(onDisconnect);
+            return this;
+        }
+
+        public Builder<ToServer, ToClient, ClientState> onConnect(
+                ConnectHandler<ToClient, ClientState> onConnect
+        ) {
+            this.onConnect = Objects.requireNonNull(onConnect);
+            return this;
+        }
+
+        public Builder<ToServer, ToClient, ClientState> onMessage(
+                MessageHandler<ToClient, ToServer, ClientState> onMessage
+        ) {
+            this.onMessage = Objects.requireNonNull(onMessage);
+            return this;
+        }
+
+        public Server<ToServer, ToClient, ClientState> build() {
+            return new BuiltServer<>(this);
+        }
+    }
+
+    @FunctionalInterface
+    public interface ConnectHandler<ToClient extends ToClientMessage, ClientState> {
+        void onConnect(
+                ServerContext<ToClient, ClientState> server,
+                ClientId id
+        );
+    }
+
+    @FunctionalInterface
+    public interface DisconnectHandler<ToClient extends ToClientMessage, ClientState> {
+        void onDisconnect(
+                ServerContext<ToClient, ClientState> server,
+                ClientId clientId
+        );
+    }
+
+    @FunctionalInterface
+    public interface MessageHandler<ToClient extends ToClientMessage, ToServer extends ToServerMessage, ClientState> {
+        void onMessage(
+                ServerContext<ToClient, ClientState> server,
+                ClientId id,
+                ToServer message
+        );
+    }
+
 }

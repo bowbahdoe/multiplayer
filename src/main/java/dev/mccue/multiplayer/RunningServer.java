@@ -1,10 +1,15 @@
 package dev.mccue.multiplayer;
 
-public final class RunningServer implements AutoCloseable {
+import java.util.List;
+
+public final class RunningServer<ToClient extends ToClientMessage, ClientState>
+        extends ServerContext
+        implements AutoCloseable {
     private final Runnable close;
     private final Thread serverThread;
 
-    RunningServer(Runnable close, Thread serverThread) {
+    RunningServer(Server<?, ToClient, ClientState> server, Runnable close, Thread serverThread) {
+        super(server);
         this.close = close;
         this.serverThread = serverThread;
     }
