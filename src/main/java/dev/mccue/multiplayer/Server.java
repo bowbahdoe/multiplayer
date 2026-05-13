@@ -14,8 +14,6 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 public abstract class Server<
         ToServer extends ToServerMessage,
@@ -164,14 +162,14 @@ public abstract class Server<
     }
 
     /// Sends a message to all connected clients.
-    protected final void broadcast(ToClient message) {
+    protected final void sendToAllClients(ToClient message) {
         clients.forEach((_, connected) -> {
             connected.outgoing.add(message);
         });
     }
 
     /// Sends a message to a specific connected client
-    protected final boolean send(ClientId id, ToClient message) {
+    protected final boolean sendToClient(ClientId id, ToClient message) {
         var client = clients.get(id);
         if (client == null) {
             LOG.warn("No connected client with id: {}", id);

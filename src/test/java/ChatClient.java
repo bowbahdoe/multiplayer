@@ -1,19 +1,31 @@
 import dev.mccue.multiplayer.Client;
+import dev.mccue.multiplayer.ToClientMessage;
 
 import java.util.function.Consumer;
 
-public class ChatClient extends Client<ToServerChat, ToClientChat> {
+
+@SuppressWarnings("rawtypes")
+public class ChatClient extends Client {
     public ChatClient(String host, int port) {
         super(host, port);
     }
 
+
     @Override
-    public void onMessage(ToClientChat message, Consumer<ToServerChat> sendToServer) {
-        IO.println("[" + (message.sender() == null ? "SYSTEM" : message.sender()) + "]: " + message.value());
+    protected void onMessage(ToClientMessage message, Consumer sendToServer) {
+        switch (message) {
+            case ToClientChat(var sender, var value) -> {
+                IO.println("[" + (sender == null ? "SYSTEM" : sender) + "]: " + value);
+            }
+            default -> {
+                IO.println("Unhandled message: " + message);
+            }
+        }
+
     }
 
     @Override
-    public void onDisconnect() {
+    protected void onDisconnect() {
 
     }
 }

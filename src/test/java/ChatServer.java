@@ -1,7 +1,9 @@
 import dev.mccue.multiplayer.Server;
 import dev.mccue.multiplayer.ClientId;
+import dev.mccue.multiplayer.ToServerMessage;
 
-public class ChatServer extends Server<ToServerChat, ToClientChat, Void> {
+@SuppressWarnings({"unchecked", "rawtypes"})
+public class ChatServer extends Server {
     public ChatServer(int port) {
         super(port);
     }
@@ -19,7 +21,14 @@ public class ChatServer extends Server<ToServerChat, ToClientChat, Void> {
     }
 
     @Override
-    protected void onMessage(ClientId clientId, ToServerChat message) {
-        broadcast(new ToClientChat(clientId, message.value()));
+    protected void onMessage(ClientId clientId, ToServerMessage message) {
+        switch (message) {
+            case ToServerChat(var value) -> {
+                broadcast(new ToClientChat(clientId, value));
+            }
+            default -> {
+                send()
+            }
+        }
     }
 }
