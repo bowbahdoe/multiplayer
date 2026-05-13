@@ -21,13 +21,13 @@ public sealed class ServerContext<ToClient extends ToClientMessage, ClientState>
     }
 
     /// Sends a message to all connected clients.
-    public void broadcast(ToClient message) {
-        server.broadcast(message);
+    public void sendToAllClients(ToClient message) {
+        server.sendToAllClients(message);
     }
 
     /// Sends a message to a specific connected client
-    public boolean send(ClientId id, ToClient message) {
-        return server.send(id, message);
+    public boolean sendToClient(ClientId id, ToClient message) {
+        return server.sendToClient(id, message);
     }
 
     public List<ClientId> connected() {
