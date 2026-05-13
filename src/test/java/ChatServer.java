@@ -10,13 +10,13 @@ public class ChatServer extends Server {
 
     @Override
     protected void onDisconnect(ClientId clientId) {
-        broadcast(new ToClientChat(null, clientId + " has disconnected"));
+        sendToAllClients(new ToClientChat(null, clientId + " has disconnected"));
         IO.println(connected());
     }
 
     @Override
     protected void onConnect(ClientId clientId) {
-        broadcast(new ToClientChat(null, clientId + " has connected"));
+        sendToAllClients(new ToClientChat(null, clientId + " has connected"));
         IO.println(connected());
     }
 
@@ -24,10 +24,9 @@ public class ChatServer extends Server {
     protected void onMessage(ClientId clientId, ToServerMessage message) {
         switch (message) {
             case ToServerChat(var value) -> {
-                broadcast(new ToClientChat(clientId, value));
+                sendToAllClients(new ToClientChat(clientId, value));
             }
             default -> {
-                send()
             }
         }
     }
